@@ -57,19 +57,143 @@ int main(int argc, char** argv)
     ArLog::log(ArLog::Terse, "Internal error: robot connector succeeded but ArRobot::isConnected() is false!");
   }
 
-  // Start the robot task loop running in a new background thread. The 'true' argument means if it loses
-  // connection the task loop stops and the thread exits.
-  robot.runAsync(true);
+  /* Start the robot task loop running in a new background thread. The 'true' argument means if it loses
+   connection the task loop stops and the thread exits. Note that after starting this thread, we must look and unlook the ArRobot object
+   before and after accessing it. */
 
-  // We need to lock the robot since we'll be setting up these modes
-  // while the robot task loop thread is already running, and they
-  // need to access some shared data in ArRobot.
+  robot.runAsync(false);//true
+
+  /* Send the robot a series of motion commands directly, sleepig for a
+  few seconds afterwards to give the robot time to execute them.*/
   robot.lock();
+  robot.setRotVel(100);
+  robot.unlock();
+  ArUtil::sleep(3*1000);
+  printf("Stopping \n");
+  robot.lock();
+  robot.setRotVel(0);
+  robot.unlock();
+  ArUtil::sleep(200);
+
+  ArLog::log(ArLog::Terse, "Sending command to move forward 1 meter...");
 
   // turn on the motors
   robot.comInt(ArCommands::ENABLE, 1);
 
+  robot.lock();
+
+  robot.move(1000);
+
   robot.unlock();
+
+  ArTime start;
+
+  start.setToNow();
+
+  while(1)
+  {
+    robot.lock();
+    if(robot.isMoveDone())
+    {
+        printf("Finished distance \n");
+        robot.unlock();
+        break;
+    }
+    if(start.mSecSince() > 5000)
+    {
+        printf("Distance time out \n");
+        robot.unlock();
+        break;
+    }
+    robot.unlock();
+    ArUtil::sleep(50);
+  }
+
+   ArLog::log(ArLog::Terse, "Sending command to move backwards 1 meter...");
+
+   robot.lock();
+
+  robot.move(-1000);
+
+  robot.unlock();
+
+  start.setToNow();
+
+  while(1)
+  {
+    robot.lock();
+    if(robot.isMoveDone())
+    {
+        printf("Finished distance \n");
+        robot.unlock();
+        break;
+    }
+    if(start.mSecSince() > 10000)
+    {
+        printf("Distance time out \n");
+        robot.unlock();
+        break;
+    }
+    robot.unlock();
+    ArUtil::sleep(50);
+  }
+
+  ArLog::log(ArLog::Terse, "Sending command to rotate 90 degrees...");
+
+   robot.lock();
+
+  robot.setHeading(90);
+
+  robot.unlock();
+
+  start.setToNow();
+
+  while(1)
+  {
+    robot.lock();
+    if(robot.isHeadingDone(5))
+    {
+        printf("Finished distance \n");
+        robot.unlock();
+        break;
+    }
+    if(start.mSecSince() > 5000)
+    {
+        printf("Distance time out \n");
+        robot.unlock();
+        break;
+    }
+    robot.unlock();
+    ArUtil::sleep(100);
+  }
+ArLog::log(ArLog::Terse, "Sending command to rotate -90 degrees...");
+
+   robot.lock();
+
+  robot.setHeading(-90);
+
+  robot.unlock();
+
+  start.setToNow();
+
+  while(1)
+  {
+    robot.lock();
+    if(robot.isHeadingDone(5))
+    {
+        printf("Finished distance \n");
+        robot.unlock();
+        break;
+    }
+    if(start.mSecSince() > 5000)
+    {
+        printf("Distance time out \n");
+        robot.unlock();
+        break;
+    }
+    robot.unlock();
+    ArUtil::sleep(100);
+  }
 
   Aria::exit(0); //Exit Aria
   return 0;
