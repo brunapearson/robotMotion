@@ -1,8 +1,15 @@
+#include "flycapture/FlyCapture2.h"
 #include "Aria.h"
+
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv/cv.h>
+
 #include <iostream>
 #include <stdio.h>
 
-//using namespace cv;
+using namespace FlyCapture2;
+using namespace cv;
 using namespace std;
 
 /*This class creates its own thread, and then runs in the thread, controlling the robot's moviments. */
@@ -110,8 +117,8 @@ public:
     //destructor
     ~SonarThread(void) {}
     //to be called if the connection was made
-   //void connected(void);
-   virtual void * runThread(void *arg);
+    //void connected(void);
+    virtual void * runThread(void *arg);
 
 
 protected:
@@ -119,7 +126,7 @@ protected:
     ArRobot *myRobot;
 
     //the functor callbacks
-   // ArFunctorC<SonarThread> *myConnectedCB;
+    // ArFunctorC<SonarThread> *myConnectedCB;
 
 };
 /* Sonar constructor */
@@ -161,8 +168,6 @@ void *SonarThread::runThread(void *arg)
     /*Send the robot a serie of motion commands directly, sleeping for a few seconds afterwards to give the robot time to execute them */
     while(myRunning)
     {
-
-
         cout << "Sonar output " << value << endl;
 
         int total = myRobot->getNumSonar();
@@ -186,6 +191,7 @@ void *SonarThread::runThread(void *arg)
 
     }
 }
+
 
 
 int main(int argc, char **argv)
@@ -252,6 +258,7 @@ int main(int argc, char **argv)
 
     SonarThread st(&robot);
 
+
     //have the robot connect asyncronously (so its loop is still running)
     //if this fails it means that the robot isn't running in its own thread
     /*if (!robot.asyncConnect())
@@ -266,6 +273,80 @@ int main(int argc, char **argv)
     ArKeyHandler keyHandler;
     Aria::setKeyHandler(&keyHandler);
     robot.attachKeyHandler(&keyHandler);
+
+    /* Camera */
+
+    Error error;
+    Camera camera; //capture object
+
+    //Connect the camera
+    error = camera.Connect(0);
+    if(error != PGRERROR_OK)
+    {
+        cout << "Failed to connect to camera" << endl;
+        return false;
+    }
+
+    error = camera.StartCapture();
+
+    if(error == PGRERROR_ISOCH_BANDWIDTH_EXCEEDED)
+    {
+        cout << "Bandwidth exceeded" << endl;
+        return false;
+    }
+    else if (error != PGRERROR_OK)
+    {
+        cout << "Failed to start image capture" << endl;
+        return false;
+    }
+
+    /*Record Video */
+
+    VideoWriter videoOutput("output.avi", CV_FOURCC('M','J','P','G'), 25, cvSize(320,240),true);
+    if(!videoOutput.isOpened())
+    {
+        cout << "error: could not open video file" << endl;
+        exit(0);
+    }
+
+    /* Main loop */
+    char key = 0;
+    //while(true)
+    while(key !='q')
+    {
+        // Get image
+        Image rawImage;
+        Error error = camera.RetrieveBuffer( &rawImage );
+        if(error != PGRERROR_OK)
+        {
+            cout << "capture error" << endl;
+            continue;
+        }
+
+        // convert to rgb
+        Image rgbImage;
+        rawImage.Convert(FlyCapture2::PIXEL_FORMAT_BGR, &rgbImage);
+
+        // convert to OpenCV MAt
+        unsigned int rowBytes = (double)rgbImage.GetReceivedDataSize()/(double)rgbImage.GetRows();
+        Mat image = Mat(rgbImage.GetRows(), rgbImage.GetCols(), CV_8UC3, rgbImage.GetData(), rowBytes);
+        //IplImage *bgr_frame=cvQueryFrame(rowBytes); //Init the video read
+
+        // resize input image
+        Size size(320,240); //the dst image size, e.g. 400/300
+        Mat dst, salient;   //dst and salient image
+        resize(image,dst,size);//resize image
+
+        imshow("Camera Video", dst);
+        videoOutput.write(dst); // save input image to output.avi file
+        key = waitKey(25);
+
+        //while(waitKey(1) !=27); //27 = ascii value for ESC
+
+    }
+
+    error = camera.StopCapture();
+    camera.Disconnect();
 
     //now is just wait for the robot to be done running
     cout << "Waiting for the robot's finish executing the code to exit" << endl;
