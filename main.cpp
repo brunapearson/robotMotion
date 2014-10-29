@@ -101,6 +101,93 @@ void *RobotMotion::runThread(void *arg)
     return NULL;
 }
 
+/*Sonar */
+class SonarThread : public ArASyncTask
+{
+public:
+    //constructor
+    SonarThread(ArRobot *robot);
+    //destructor
+    ~SonarThread(void) {}
+    //to be called if the connection was made
+   //void connected(void);
+   virtual void * runThread(void *arg);
+
+
+protected:
+    //robot pointer
+    ArRobot *myRobot;
+
+    //the functor callbacks
+   // ArFunctorC<SonarThread> *myConnectedCB;
+
+};
+/* Sonar constructor */
+SonarThread::SonarThread(ArRobot *robot)
+{
+    //set the pointers
+    myRobot = robot;
+
+    myRobot->comInt(ArCommands::SONAR,0);
+    ArSonarDevice mySonar;
+
+    myRobot->addRangeDevice(&mySonar);
+
+
+
+    //now create the functor callbacks, than set them on the robot
+    //myConnectedCB =  new ArFunctorC<SonarThread>(this, &SonarThread::connected);
+    //myRobot->addConnectCB(myConnectedCB, ArListPos::FIRST);
+
+    // this is what creates are own thread, its from the ArASyncTask
+    create();
+}
+
+
+// this is the function called in the new thread
+void *SonarThread::runThread(void *arg)
+{
+    threadStarted();
+
+    double value; //variable to hold the closest value from all the sonar readings
+
+    double angleValue; // passed as pointer to the method in order to retrive the angle at closest value
+
+    ArSensorReading* values; //This class abstracts range and angle read from sonar
+
+//A slice of the polar region (from -90 to 90)
+//value = mySonar.currentReadingPolar(-90,90, &angleAtValue);
+
+    /*Send the robot a serie of motion commands directly, sleeping for a few seconds afterwards to give the robot time to execute them */
+    while(myRunning)
+    {
+
+
+        cout << "Sonar output " << value << endl;
+
+        int total = myRobot->getNumSonar();
+
+        cout << "Number of Sonar " << total << endl;
+
+        for(int i=0; i < total; i++)
+        {
+            values = myRobot->getSonarReading(i);
+            double range = values->getRange();
+            double angle = values->getSensorTh();
+            cout << "Sonar reading " << i << " = " << range
+                 << " Angle " << i << " = " <<
+                 angle << "\n";
+            if(range < 300)
+            {
+                cout << "Obstacle detected at " << angle << endl;
+                break;
+            }
+        }
+
+    }
+}
+
+
 int main(int argc, char **argv)
 {
     // If you want ArLog to print "Verbose" level messages uncomment this:
@@ -162,6 +249,8 @@ int main(int argc, char **argv)
     robot.runAsync(false);//true
 
     RobotMotion rm(&robot);
+
+    SonarThread st(&robot);
 
     //have the robot connect asyncronously (so its loop is still running)
     //if this fails it means that the robot isn't running in its own thread
