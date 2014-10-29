@@ -2,17 +2,107 @@
 #include <iostream>
 #include <stdio.h>
 
+//using namespace cv;
+using namespace std;
 
+/*This class creates its own thread, and then runs in the thread, controlling the robot's moviments. */
 
-
-/* Main method */
-int main(int argc, char** argv)
+class RobotMotion : public ArASyncTask
 {
+public:
+    // constructor
+    RobotMotion(ArRobot *robot);
+    // empty destructor
+    ~RobotMotion(void) {}
 
-    // Initialize some global data
-    Aria::init();
+    // the function to run in the new thread, this just is called once, so
+    // only return when you want th ethread to exit
+    virtual void * runThread(void *arg);
+
+protected:
+
+    // robot pointer
+    ArRobot *myRobot;
+};
+
+// a nice simple constructor
+RobotMotion::RobotMotion(ArRobot *robot)
+{
+    //set the robot pointer
+    myRobot = robot;
+
+    //print out some information about the robot
+    printf("rx %6.1f y %66.1f tth %6.1f vel %7.1f mpacs %3d ", myRobot->getX(), myRobot->getY(), myRobot->getTh(), myRobot->getVel(), myRobot->getMotorPacCount() );
+    fflush(stdout);
+
+    // this is what creates are own thread, its from the ArASyncTask
+    create();
+}
+
+// this is the function called in the new thread
+void *RobotMotion::runThread(void *arg)
+{
+    threadStarted();
+
+    /*Send the robot a serie of motion commands directly, sleeping for a few seconds afterwards to give the robot time to execute them */
+    while(myRunning)
+    {
+        //lock the robot before touching it
+        myRobot->lock();
+        if(!myRobot->isConnected())
+        {
+            myRobot->unlock();
+            break;
+        }
+        //print out some information about the robot
+        printf("rx %6.1f y %66.1f tth %6.1f vel %7.1f mpacs %3d ", myRobot->getX(), myRobot->getY(), myRobot->getTh(), myRobot->getVel(), myRobot->getMotorPacCount() );
+        fflush(stdout);
+        myRobot->setRotVel(50);
+        myRobot->unlock();
+        ArUtil::sleep(3*1000);
+        cout << "Stopping" << endl;
+        myRobot->lock();
+        myRobot->setRotVel(0);
+        myRobot->unlock();
+        ArUtil::sleep(200);
+
+        ArLog::log(ArLog::Terse, "Sending command to move forward 1 meter...");
+
+        //turn on the motors
+        myRobot->comInt(ArCommands::ENABLE,1);
+        myRobot->lock();
+        myRobot->move(1000);
+        myRobot->unlock();
+        ArTime start;
+        start.setToNow();
+
+        while(1)
+        {
+            myRobot->lock();
+            if(myRobot->isMoveDone())
+            {
+                cout << "Finished distance" << endl;
+                myRobot->unlock();
+                break;
+            }
+            if(start.mSecSince() > 5000)
+            {
+                cout << "Distance time out" << endl;
+                myRobot->unlock();
+                break;
+            }
+            myRobot->unlock();
+            ArUtil::sleep(50);
+        }
+    }
 
 
+    // return out here, means the thread is done
+    return NULL;
+}
+
+int main(int argc, char **argv)
+{
     // If you want ArLog to print "Verbose" level messages uncomment this:
     //ArLog::init(ArLog::StdOut, ArLog::Verbose);
 
@@ -26,6 +116,11 @@ int main(int argc, char** argv)
     // Central object that is an interface to the robot and its integrated
     // devices, and which manages control of the robot by the rest of the program.
     ArRobot robot;
+
+    //RobotMotion rm(&robot);
+
+    // init aria, which will make a dedicated signal handling thread
+    Aria::init(Aria::SIGHANDLE_THREAD);
 
     // Object that connects to the robot or simulator using program options
     ArRobotConnector robotConnector(&parser, &robot);
@@ -66,187 +161,29 @@ int main(int argc, char** argv)
 
     robot.runAsync(false);//true
 
-    /* Send the robot a series of motion commands directly, sleepig for a
-    few seconds afterwards to give the robot time to execute them.*/
-    robot.lock();
-    robot.setRotVel(50);
-    robot.unlock();
-    ArUtil::sleep(3*1000);
-    printf("Stopping \n");
-    robot.lock();
-    robot.setRotVel(0);
-    robot.unlock();
-    ArUtil::sleep(200);
+    RobotMotion rm(&robot);
 
-    ArLog::log(ArLog::Terse, "Sending command to move forward 1 meter...");
-
-    // turn on the motors
-    robot.comInt(ArCommands::ENABLE, 1);
-
-    robot.lock();
-
-    robot.move(1000);
-
-    robot.unlock();
-
-    ArTime start;
-
-    start.setToNow();
-
-    while(1)
+    //have the robot connect asyncronously (so its loop is still running)
+    //if this fails it means that the robot isn't running in its own thread
+    /*if (!robot.asyncConnect())
     {
-        robot.lock();
-        if(robot.isMoveDone())
-        {
-            printf("Finished distance \n");
-            robot.unlock();
-            break;
-        }
-        if(start.mSecSince() > 5000)
-        {
-            printf("Distance time out \n");
-            robot.unlock();
-            break;
-        }
-        robot.unlock();
-        ArUtil::sleep(50);
-    }
+    printf(
+    "asyncConnect failed because robot is not running in its own thread.\n");
+    Aria::shutdown();
+    return 1;
+    }*/
 
-    ArLog::log(ArLog::Terse, "Sending command to move backwards 1 meter...");
+    /*Used to perform actions when keyboard keys are pressed */
+    ArKeyHandler keyHandler;
+    Aria::setKeyHandler(&keyHandler);
+    robot.attachKeyHandler(&keyHandler);
 
-    robot.lock();
+    //now is just wait for the robot to be done running
+    cout << "Waiting for the robot's finish executing the code to exit" << endl;
+    robot.waitForRunExit();
 
-    robot.move(-1000);
-
-    robot.unlock();
-
-    start.setToNow();
-
-    while(1)
-    {
-        robot.lock();
-        if(robot.isMoveDone())
-        {
-            printf("Finished distance \n");
-            robot.unlock();
-            break;
-        }
-        if(start.mSecSince() > 10000)
-        {
-            printf("Distance time out \n");
-            robot.unlock();
-            break;
-        }
-        robot.unlock();
-        ArUtil::sleep(50);
-    }
-
-    ArLog::log(ArLog::Terse, "Sending command to rotate 30 degrees...");
-
-    robot.lock();
-
-    robot.setHeading(30);
-
-    robot.unlock();
-
-    start.setToNow();
-
-    while(1)
-    {
-        robot.lock();
-        if(robot.isHeadingDone(5))
-        {
-            printf("Finished distance \n");
-            robot.unlock();
-            break;
-        }
-        if(start.mSecSince() > 5000)
-        {
-            printf("Distance time out \n");
-            robot.unlock();
-            break;
-        }
-        robot.unlock();
-        ArUtil::sleep(100);
-    }
-    ArLog::log(ArLog::Terse, "Sending command to rotate -30 degrees...");
-
-    robot.lock();
-
-    robot.setHeading(-30);
-
-    robot.unlock();
-
-    start.setToNow();
-
-    while(1)
-    {
-        robot.lock();
-        if(robot.isHeadingDone(5))
-        {
-            printf("Finished distance \n");
-            robot.unlock();
-            break;
-        }
-        if(start.mSecSince() > 5000)
-        {
-            printf("Distance time out \n");
-            robot.unlock();
-            break;
-        }
-        robot.unlock();
-        ArUtil::sleep(100);
-    }
-
-    /*
-     *----------------------------------------------------------------------------------
-     * Print raw sonar data
-     *----------------------------------------------------------------------------------
-     */
-
-    ArSonarDevice mySonar;
-    robot.addRangeDevice(&mySonar);
-
-    double value; //variable to hold the closest value from all the sonar readings
-
-    //angleAtValue is passed as pointer to method to retrieve angle at closest value double angleAtValue;
-    double angleAtValue;
-
-    //A slice of the polar region (from -90 to 90)
-    //value = mySonar.currentReadingPolar(-90,90, &angleAtValue);
-
-    std::cout << "Sonar output " << value << std::endl;
-
-    int total = robot.getNumSonar();
-
-    std::cout << "Number of Sonars " << total << std::endl;
-
-    ArSensorReading* values; //This class abstracts range and angle read from sonar
-
-    int counter = 0;
-
-    while(counter < 5)
-    {
-        for(int i=0; i < total; i++)
-        {
-            values = robot.getSonarReading(i);
-            double range = values->getRange();
-            double angle = values->getSensorTh();
-            std::cout << "Sonar reading " << i << " = " << range
-                      <<" Angle " << i << " = " <<
-                      angle << "\n";
-            if(range < 300)
-            {
-                std::cout << "Obstacle detected at " << angle << std::endl;
-                //robot.setRotVel(30.0);
-                break;
-            }
-        }
-
-        counter += 1;
-
-    }
-    Aria::exit(0); //Exit Aria
+    //the we exit
+    cout << "Exiting main" << endl;
+    Aria::exit(0);
     return 0;
-
 }
