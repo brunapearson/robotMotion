@@ -113,11 +113,14 @@ class SonarThread : public ArASyncTask
 {
 public:
     //constructor
-    SonarThread(ArRobot *robot);
+    SonarThread(ArRobot *robot, RobotMotion *rmotion);
     //destructor
     ~SonarThread(void) {}
     //to be called if the connection was made
     //void connected(void);
+
+    double obstacleAtAngle = 40.0;
+
     virtual void * runThread(void *arg);
 
 
@@ -125,12 +128,17 @@ protected:
     //robot pointer
     ArRobot *myRobot;
 
+    //pointer to robotmotion
+    RobotMotion *myRobotMotion;
+
     //the functor callbacks
     // ArFunctorC<SonarThread> *myConnectedCB;
 
+
+
 };
 /* Sonar constructor */
-SonarThread::SonarThread(ArRobot *robot)
+SonarThread::SonarThread(ArRobot *robot, RobotMotion *rmotion)
 {
     //set the pointers
     myRobot = robot;
@@ -138,6 +146,8 @@ SonarThread::SonarThread(ArRobot *robot)
     ArSonarDevice mySonar;
 
     myRobot->addRangeDevice(&mySonar);
+
+
 
 
 
@@ -185,12 +195,14 @@ void *SonarThread::runThread(void *arg)
             if(range < 300)
             {
                 cout << "Obstacle detected at " << angle << endl;
+                myRobotMotion->stopRunning();
                 break;
             }
         }
 
     }
 }
+
 
 
 
@@ -252,11 +264,19 @@ int main(int argc, char **argv)
      connection the task loop stops and the thread exits. Note that after starting this thread, we must look and unlook the ArRobot object
      before and after accessing it. */
 
+
+
     robot.runAsync(false);//true
 
     RobotMotion rm(&robot);
 
-    SonarThread st(&robot);
+    SonarThread st(&robot, &rm);
+
+    //cout << "--------Testing " << st.obstacleAtAngle << endl;
+
+    //rm.stopRunning();
+
+
 
 
     //have the robot connect asyncronously (so its loop is still running)
