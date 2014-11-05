@@ -135,7 +135,6 @@ SonarThread::SonarThread(ArRobot *robot)
     //set the pointers
     myRobot = robot;
 
-    myRobot->comInt(ArCommands::SONAR,0);
     ArSonarDevice mySonar;
 
     myRobot->addRangeDevice(&mySonar);
@@ -158,7 +157,7 @@ void *SonarThread::runThread(void *arg)
 
     double value; //variable to hold the closest value from all the sonar readings
 
-    double angleValue; // passed as pointer to the method in order to retrive the angle at closest value
+//    double angleValue; // passed as pointer to the method in order to retrive the angle at closest value
 
     ArSensorReading* values; //This class abstracts range and angle read from sonar
 
@@ -168,6 +167,7 @@ void *SonarThread::runThread(void *arg)
     /*Send the robot a serie of motion commands directly, sleeping for a few seconds afterwards to give the robot time to execute them */
     while(myRunning)
     {
+        ArUtil::sleep(1000);
         cout << "Sonar output " << value << endl;
 
         int total = myRobot->getNumSonar();
@@ -284,6 +284,7 @@ int main(int argc, char **argv)
     if(error != PGRERROR_OK)
     {
         cout << "Failed to connect to camera" << endl;
+        Aria::exit(0);
         return false;
     }
 
@@ -292,11 +293,13 @@ int main(int argc, char **argv)
     if(error == PGRERROR_ISOCH_BANDWIDTH_EXCEEDED)
     {
         cout << "Bandwidth exceeded" << endl;
+        Aria::exit(0);
         return false;
     }
     else if (error != PGRERROR_OK)
     {
         cout << "Failed to start image capture" << endl;
+        Aria::exit(0);
         return false;
     }
 
@@ -320,6 +323,7 @@ int main(int argc, char **argv)
         if(error != PGRERROR_OK)
         {
             cout << "capture error" << endl;
+            Aria::exit(0);
             continue;
         }
 
