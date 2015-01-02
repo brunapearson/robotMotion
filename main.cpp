@@ -5,12 +5,21 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv/cv.h>
 
+#include "PreProcessing.h"
+#include "HistogramAnalysis.h"
+#include "CreateCamera.h"
+#include "DetectArea.h"
+#include "TraversabilityMap.h"
+#include "NormEdges.h"
+
 #include <iostream>
 #include <stdio.h>
+#include <unistd.h>
 
 using namespace FlyCapture2;
 using namespace cv;
 using namespace std;
+
 
 /*This class creates its own thread, and then runs in the thread, controlling the robot's moviments. */
 
@@ -195,7 +204,7 @@ void *SonarThread::runThread(void *arg)
             if(range < 300)
             {
                 cout << "Obstacle detected at " << angle << endl;
-                myRobotMotion->stopRunning();
+                //myRobotMotion->stopRunning();
                 break;
             }
         }
@@ -208,6 +217,31 @@ void *SonarThread::runThread(void *arg)
 
 int main(int argc, char **argv)
 {
+    PreProcessing pp;
+    HistogramAnalysis ha;
+    CreateCamera cc;
+    DetectArea da;
+    TraversabilityMap tm;
+    NormEdges ne;
+
+    Mat pathSize;
+    Mat pathEdgesID;
+    Mat pathEdgesy;
+    Mat pathEdgesLeft;
+    Mat pathEdgesRight;
+    Mat pathEdgesxLeft;
+    Mat pathEdgesxRight;
+    int pathEdgesNumSegm;
+
+    Mat obstacleSize;
+    Mat obstacleEdgesID;
+    Mat obstacleEdgesy;
+    Mat obstacleEdgesxLeft;
+    Mat obstacleEdgesxRight;
+
+    int obstacleedgesNumSegm;
+
+
     // If you want ArLog to print "Verbose" level messages uncomment this:
     //ArLog::init(ArLog::StdOut, ArLog::Verbose);
 
@@ -268,9 +302,9 @@ int main(int argc, char **argv)
 
     robot.runAsync(false);//true
 
-    RobotMotion rm(&robot);
+    //RobotMotion rm(&robot);
 
-    SonarThread st(&robot, &rm);
+    //SonarThread st(&robot, &rm);
 
     //cout << "--------Testing " << st.obstacleAtAngle << endl;
 
@@ -332,6 +366,7 @@ int main(int argc, char **argv)
         exit(0);
     }
 
+
     /* Main loop */
     char key = 0;
     //while(true)
@@ -347,6 +382,9 @@ int main(int argc, char **argv)
             continue;
         }
 
+        /*Initialisation */
+        cc.sCamera("Default");
+
         // convert to rgb
         Image rgbImage;
         rawImage.Convert(FlyCapture2::PIXEL_FORMAT_BGR, &rgbImage);
@@ -360,6 +398,103 @@ int main(int argc, char **argv)
         Size size(320,240); //the dst image size, e.g. 400/300
         Mat dst, salient;   //dst and salient image
         resize(image,dst,size);//resize image
+
+        //****************************************************************************************************************
+        // ------- 1 - camera image pre-processing
+        //****************************************************************************************************************
+
+        //Saturation (based on the S channel of the HSL colourspace)
+        pp.Saturation(dst);
+        imshow("Display Saturation", pp.hls_320x240);
+
+        //Saturation-based texture
+        pp.SaturationTexture(dst);
+        imshow("Display Saturation-based texture", pp.hls2_320x240);
+
+        //Mean Chroma
+        pp.MeanChroma(dst);
+        imshow("Display Mean Chroma", pp.meanChroma_320x240);
+
+        //Chroma-based texture
+        pp.ChromaTexture(dst);
+        imshow("Display Chroma-based texture", pp.chromaTextureMap);
+
+        //****************************************************************************************************************
+        // ------- 2 - multi-dimensional segmentation by histogram analysis
+        //****************************************************************************************************************
+        ha.CompositeImage(dst,pp.hls_320x240,pp.hls2_320x240,pp.meanChroma_320x240,pp.chromaTextureMap);
+
+        ha.HistoryArchiveIndex();
+        ha.VertLinesEdges();
+        ha.BlockElements();
+
+        ha.Histogram(ha.imageComp, cc.YPixels, cc.XPixels);
+        ha.ClassifySurface();
+
+        ha.Remap();
+
+        //****************************************************************************************************************
+        // ------- 3 - temporal information processing
+        //****************************************************************************************************************
+        da.SurfaceObstacleDetection(ha.finalFrameFused, ha.numGridRows, ha.numGridCols, ha.path_Shade, ha.maxPathLines);
+        pathSize = da.areaSize2.clone();
+        pathEdgesID = da.areaEdges_ID2.clone();
+        pathEdgesy = da.areaEdges_y.clone();
+        pathEdgesxLeft = da.areaEdges_xLeft.clone();
+        pathEdgesxRight =  da.areaEdges_xRight.clone();
+        pathEdgesNumSegm = da.areaEdgesNumSegm;
+
+        ha.Segmentation(ha.finalFrameFused,pathEdgesNumSegm,pathEdgesy,pathSize,pathEdgesID,pathEdgesxLeft,pathEdgesxRight);
+
+        da.SurfaceObstacleDetection(ha.finalFrameFusedSeg2,ha.numGridRows, ha.numGridCols, ha.obstShade, ha.maxPathLines);
+
+        obstacleSize = da.areaSize2.clone();
+        obstacleEdgesID = da.areaEdges_ID2.clone();
+        obstacleEdgesy = da.areaEdges_y.clone();
+        obstacleEdgesxLeft = da.areaEdges_xLeft.clone();
+        obstacleEdgesxRight = da.areaEdges_xRight.clone();
+        obstacleedgesNumSegm = da.areaEdgesNumSegm;
+
+        ha.DetectObstacles(ha.finalFrameFusedSeg2, obstacleedgesNumSegm, obstacleSize, obstacleEdgesID, obstacleEdgesxRight, obstacleEdgesxLeft, obstacleEdgesy);
+
+        ha.ThresholdMap(ha.finalFrameFusedObs2);
+
+        /*Detect Path Area - Iteration 2 */
+        da.SurfaceObstacleDetection(ha.finalFrameFusedThres2, ha.numGridRows,ha.numGridCols,ha.path_Shade, ha.maxPathLines);
+
+        pathEdgesy = da.areaEdges_y.clone();
+        pathEdgesxLeft = da.areaEdges_xLeft.clone();
+        pathEdgesxRight = da.areaEdges_xRight.clone();
+        pathEdgesNumSegm = da.areaEdgesNumSegm;
+
+        da.SurfaceObstacleDetection(ha.finalFrameFusedThres2,ha.numGridRows, ha.numGridCols, ha.obstShade, ha.maxPathLines);
+
+        obstacleSize = da.areaSize2.clone();
+        obstacleEdgesID = da.areaEdges_ID2.clone();
+        obstacleEdgesy = da.areaEdges_y.clone();
+        obstacleEdgesxLeft = da.areaEdges_xLeft.clone();
+        obstacleEdgesxRight = da.areaEdges_xRight.clone();
+        obstacleedgesNumSegm = da.areaEdgesNumSegm;
+
+        ha.Coordinates(pathEdgesNumSegm,pathEdgesy,pathEdgesxLeft, pathEdgesxRight);
+
+        ha.ObstacleCoord(obstacleedgesNumSegm, obstacleEdgesID, obstacleEdgesxRight, obstacleEdgesxLeft, obstacleEdgesy);
+
+        //****************************************************************************************************************
+        // ------- 4 - Draw map
+        //****************************************************************************************************************
+
+        Mat normLeftEdges;
+        Mat normRightEdges;
+
+        ne.NormaliseEdges(ha.pathData_LeftEdge2, ha.pathDataNoOfLines, 5);
+        normLeftEdges = ne.finalArray.clone();
+
+        ne.NormaliseEdges(ha.pathData_RightEdge, ha.pathDataNoOfLines, 5);
+        normRightEdges = ne.finalArray.clone();
+
+        tm.HorizonLine(dst, ha.X_resolution, ha.obstacleData_NoOfObstacles, ha.obstacleData_LeftEdge, ha.obstacleData_RightEdge, ha.obstacleData_yPixel, ha.pathData_yPixel, normLeftEdges, normRightEdges, ha.pathDataNoOfLines);
+
 
         imshow("Camera Video", dst);
         videoOutput.write(dst); // save input image to output.avi file
