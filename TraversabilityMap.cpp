@@ -1,5 +1,6 @@
 //Include Files
 #include "TraversabilityMap.h"
+#include <fstream>
 
 //namespace declaration
 using namespace cv;
@@ -36,10 +37,23 @@ void TraversabilityMap::HorizonLine(Mat image,int X_resolution, int obstacleData
     path_points[0] = new Point[pathDataNoOfLines];
 
     int counter=0;
+
+    //create file and print out the robot position
+    /*string coordinatesPath;
+    ofstream coordPathway;
+    coordPathway.open("coordPathway.txt");*/
+
     for(int i = 0; i < pathDataNoOfLines; i++)
     {
         path_points[0][i] = Point(pathData_LeftEdge.at<int>(i),pathData_yPixel.at<int>(i));
+
+        /*coordinatesPath = format("L %6.1f - Y %6.1f ", pathData_LeftEdge.at<int>(i), pathData_yPixel.at<int>(i));
+        //print position to file
+        coordPathway << coordinatesPath << endl;*/
     }
+
+
+
 
     const Point* ppt[1] = { path_points[0]};
     int npt[] = { pathDataNoOfLines };
@@ -58,7 +72,12 @@ void TraversabilityMap::HorizonLine(Mat image,int X_resolution, int obstacleData
     for(int i = 0; i < pathDataNoOfLines; i++)
     {
         path_points_right[0][i] = Point(pathData_RightEdge.at<int>(i),pathData_yPixel.at<int>(i));
+
+        //coordinatesPath = format("L %6.1f - Y %6.1f ", c_right, c_y);
+        //print position to file
+        //coordPathway << c_right << endl;
     }
+    //coordPathway.close();
 
     const Point* ppt_right[1] = { path_points_right[0]};
     int npt_right[] = { pathDataNoOfLines };

@@ -42,6 +42,7 @@ Mat chromaMap;
 Mat gradC, gradC_x, gradC_y, gradC_DST, gradC_DST2, gradC_DST3, gradC_DST4, gradC_DST5, smoothC, chroma_320x240;
 Mat abs_gradC_x, abs_gradC_y;
 Mat chromaTextureMap;
+Mat divog_320x240;
 
 
 // Constructor & Destructor
@@ -54,4 +55,5 @@ void Saturation(Mat image);
 void SaturationTexture(Mat image);
 void MeanChroma(Mat image);
 void ChromaTexture(Mat image);
+void DiVoG(const Mat& image);
 };

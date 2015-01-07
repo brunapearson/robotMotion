@@ -1,10 +1,13 @@
 //Include Files
 #include <fstream>
 #include "PreProcessing.h"
+#include "SaliencyDetector.h"
 
 //namespace declaration
 using namespace cv;
 using namespace std;
+
+SaliencyDetector sd;
 
 //! Class constructor
 PreProcessing::PreProcessing()
@@ -244,4 +247,26 @@ gradC_DST4.release();
 gradC_DST5.release();
 chromaMap.release();
 chroma_320x240.release();
+}
+
+//***********************************************************************************************************
+//--- DIVoG
+//***********************************************************************************************************
+void PreProcessing::DiVoG(const Mat& image)
+{
+/* Using DiVoG */
+Mat salient;   //dst and salient image
+
+// convert from Mat to old style C IplImage object
+IplImage* newImage = new IplImage(image);
+
+salient = image.clone();
+IplImage* divogMap = new IplImage(salient);
+sd.DIVoG_Saliency(newImage,divogMap,3,true,true);
+
+// convert from Iplimage to Mat
+Mat imgMat(divogMap);
+
+// Convert to single channel grayscale image
+cvtColor(imgMat,divog_320x240,CV_BGR2GRAY);
 }

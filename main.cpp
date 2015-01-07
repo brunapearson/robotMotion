@@ -13,6 +13,7 @@
 #include "NormEdges.h"
 
 #include <iostream>
+#include <fstream>
 #include <stdio.h>
 #include <unistd.h>
 
@@ -60,6 +61,11 @@ void *RobotMotion::runThread(void *arg)
 {
     threadStarted();
 
+    //create file and print out the robot position
+        string position;
+        ofstream robotPosition;
+        robotPosition.open("robotPosition.txt");
+
     /*Send the robot a serie of motion commands directly, sleeping for a few seconds afterwards to give the robot time to execute them */
     while(myRunning)
     {
@@ -72,6 +78,13 @@ void *RobotMotion::runThread(void *arg)
         }
         //print out some information about the robot
         printf("rx %6.1f y %66.1f tth %6.1f vel %7.1f mpacs %3d ", myRobot->getX(), myRobot->getY(), myRobot->getTh(), myRobot->getVel(), myRobot->getMotorPacCount() );
+
+        position = format("rx %6.1f - y %6.1f - tth %6.1f - vel %7.1f - mpacs %3d ", myRobot->getX(), myRobot->getY(), myRobot->getTh(), myRobot->getVel(), myRobot->getMotorPacCount() );
+
+        //print position to file
+        robotPosition << position << endl;
+
+
         fflush(stdout);
         myRobot->setRotVel(50);
         myRobot->unlock();
@@ -112,6 +125,7 @@ void *RobotMotion::runThread(void *arg)
         }
     }
 
+robotPosition.close();
 
     // return out here, means the thread is done
     return NULL;
@@ -212,9 +226,6 @@ void *SonarThread::runThread(void *arg)
     }
 }
 
-
-
-
 int main(int argc, char **argv)
 {
     PreProcessing pp;
@@ -302,7 +313,7 @@ int main(int argc, char **argv)
 
     robot.runAsync(false);//true
 
-    //RobotMotion rm(&robot);
+    RobotMotion rm(&robot);
 
     //SonarThread st(&robot, &rm);
 
@@ -366,12 +377,12 @@ int main(int argc, char **argv)
         exit(0);
     }
 
-
     /* Main loop */
     char key = 0;
     //while(true)
     while(key !='q')
     {
+
         // Get image
         Image rawImage;
         Error error = camera.RetrieveBuffer( &rawImage );
@@ -419,10 +430,16 @@ int main(int argc, char **argv)
         pp.ChromaTexture(dst);
         imshow("Display Chroma-based texture", pp.chromaTextureMap);
 
+        //DIVoG
+        pp.DiVoG(dst);
+        imshow("DiVoG",pp.divog_320x240);
+
+
         //****************************************************************************************************************
         // ------- 2 - multi-dimensional segmentation by histogram analysis
         //****************************************************************************************************************
-        ha.CompositeImage(dst,pp.hls_320x240,pp.hls2_320x240,pp.meanChroma_320x240,pp.chromaTextureMap);
+        //ha.CompositeImage(dst,pp.hls_320x240,pp.hls2_320x240,pp.meanChroma_320x240,pp.chromaTextureMap);
+        ha.CompositeImage(dst,pp.divog_320x240,pp.hls2_320x240,pp.meanChroma_320x240,pp.chromaTextureMap);
 
         ha.HistoryArchiveIndex();
         ha.VertLinesEdges();
@@ -487,6 +504,8 @@ int main(int argc, char **argv)
         Mat normLeftEdges;
         Mat normRightEdges;
 
+        if(ha.obstacleData_NoOfObstacles > 0 && ha.pathDataNoOfLines > 0)
+        {
         ne.NormaliseEdges(ha.pathData_LeftEdge2, ha.pathDataNoOfLines, 5);
         normLeftEdges = ne.finalArray.clone();
 
@@ -495,9 +514,22 @@ int main(int argc, char **argv)
 
         tm.HorizonLine(dst, ha.X_resolution, ha.obstacleData_NoOfObstacles, ha.obstacleData_LeftEdge, ha.obstacleData_RightEdge, ha.obstacleData_yPixel, ha.pathData_yPixel, normLeftEdges, normRightEdges, ha.pathDataNoOfLines);
 
+        //write text on video
+        /*char TestStr[100];
+        sprintf(TestStr,"waited: %1f and loop is %1f", 0.5,0.7);
+        putText(dst,TestStr,Point(10,50),CV_FONT_NORMAL,0.45,Scalar(255,255,255),1,1);*/
+
 
         imshow("Camera Video", dst);
         videoOutput.write(dst); // save input image to output.avi file
+        }
+
+
+
+
+
+        //imshow("Camera Video", dst);
+        //videoOutput.write(dst); // save input image to output.avi file
         key = waitKey(25);
 
         //while(waitKey(1) !=27); //27 = ascii value for ESC
