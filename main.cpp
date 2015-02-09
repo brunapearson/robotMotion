@@ -62,19 +62,19 @@ void *RobotMotion::runThread(void *arg)
     threadStarted();
 
     //create file and print out the robot position
-        string position;
-        ofstream robotPosition;
-        robotPosition.open("robotPosition.txt");
+    string position;
+    ofstream robotPosition;
+    robotPosition.open("robotPosition.txt");
 
     /*Send the robot a serie of motion commands directly, sleeping for a few seconds afterwards to give the robot time to execute them */
-    while(myRunning)
+    //while(myRunning)
     {
         //lock the robot before touching it
         myRobot->lock();
         if(!myRobot->isConnected())
         {
             myRobot->unlock();
-            break;
+            //break;
         }
         //print out some information about the robot
         printf("rx %6.1f y %66.1f tth %6.1f vel %7.1f mpacs %3d ", myRobot->getX(), myRobot->getY(), myRobot->getTh(), myRobot->getVel(), myRobot->getMotorPacCount() );
@@ -95,14 +95,68 @@ void *RobotMotion::runThread(void *arg)
         myRobot->unlock();
         ArUtil::sleep(200);
 
-        ArLog::log(ArLog::Terse, "Sending command to move forward 1 meter...");
+        ArLog::log(ArLog::Terse, "Sending command to move forward 3.7 meter...");
 
         //turn on the motors
         myRobot->comInt(ArCommands::ENABLE,1);
         myRobot->lock();
-        myRobot->move(1000);
+        //myRobot->move(3700);
+        myRobot->move(700);
         myRobot->unlock();
         ArTime start;
+        start.setToNow();
+
+        while(1)
+        {
+            myRobot->lock();
+            if(myRobot->isMoveDone())
+            {
+                cout << "Finished distance" << endl;
+                myRobot->unlock();
+                break;
+            }
+            //if(start.mSecSince() > 10000)
+            if(start.mSecSince() > 5000)
+            {
+                cout << "Distance time out" << endl;
+                myRobot->unlock();
+                break;
+            }
+            myRobot->unlock();
+            ArUtil::sleep(50);
+        }
+
+        //Turn right
+        ArLog::log(ArLog::Terse,"Sending command to rotate -50 degrees");
+        myRobot->lock();
+        myRobot->setDeltaHeading(-90);
+        myRobot->unlock();
+        start.setToNow();
+
+        while(1)
+        {
+            myRobot->lock();
+            if(myRobot->isHeadingDone(5))
+            {
+                cout << "Finished distance" << endl;
+                myRobot->unlock();
+                break;
+            }
+            if(start.mSecSince() > 5000)
+            {
+                cout << "Distance time out" << endl;
+                myRobot->unlock();
+                break;
+            }
+            myRobot->unlock();
+            ArUtil::sleep(50);
+        }
+
+       /* ArLog::log(ArLog::Terse,"Sending command to forward 5 meter...");
+        myRobot->lock();
+        //myRobot->move(5000);
+        myRobot->move(50);
+        myRobot->unlock();
         start.setToNow();
 
         while(1)
@@ -122,10 +176,10 @@ void *RobotMotion::runThread(void *arg)
             }
             myRobot->unlock();
             ArUtil::sleep(50);
-        }
+        }*/
     }
 
-robotPosition.close();
+    robotPosition.close();
 
     // return out here, means the thread is done
     return NULL;
@@ -196,6 +250,15 @@ void *SonarThread::runThread(void *arg)
 
 //A slice of the polar region (from -90 to 90)
 //value = mySonar.currentReadingPolar(-90,90, &angleAtValue);
+    string s_number;
+    string s_obstacle;
+    ofstream sonarReadings;
+    sonarReadings.open("sonarReadings.txt");
+
+
+
+
+
 
     /*Send the robot a serie of motion commands directly, sleeping for a few seconds afterwards to give the robot time to execute them */
     while(myRunning)
@@ -206,6 +269,9 @@ void *SonarThread::runThread(void *arg)
         int total = myRobot->getNumSonar();
 
         cout << "Number of Sonar " << total << endl;
+        s_number = format("Number of Sonar %6d ", total );
+        //print value to file
+        sonarReadings << s_number << endl;
 
         for(int i=0; i < total; i++)
         {
@@ -218,12 +284,17 @@ void *SonarThread::runThread(void *arg)
             if(range < 300)
             {
                 cout << "Obstacle detected at " << angle << endl;
-                //myRobotMotion->stopRunning();
+                s_obstacle = format("Obstacle detected at %6.1f ", angle );
+                //print value to file
+                sonarReadings << s_obstacle << endl;
+
+                myRobotMotion->stopRunning();
                 break;
             }
         }
 
     }
+    sonarReadings.close();
 }
 
 int main(int argc, char **argv)
@@ -315,7 +386,7 @@ int main(int argc, char **argv)
 
     RobotMotion rm(&robot);
 
-    //SonarThread st(&robot, &rm);
+    SonarThread st(&robot, &rm);
 
     //cout << "--------Testing " << st.obstacleAtAngle << endl;
 
@@ -409,6 +480,9 @@ int main(int argc, char **argv)
         Size size(320,240); //the dst image size, e.g. 400/300
         Mat dst, salient;   //dst and salient image
         resize(image,dst,size);//resize image
+
+        //record video
+        videoOutput.write(dst);
 
         //****************************************************************************************************************
         // ------- 1 - camera image pre-processing
@@ -506,22 +580,23 @@ int main(int argc, char **argv)
 
         if(ha.obstacleData_NoOfObstacles > 0 && ha.pathDataNoOfLines > 0)
         {
-        ne.NormaliseEdges(ha.pathData_LeftEdge2, ha.pathDataNoOfLines, 5);
-        normLeftEdges = ne.finalArray.clone();
+            ne.NormaliseEdges(ha.pathData_LeftEdge2, ha.pathDataNoOfLines, 5);
+            normLeftEdges = ne.finalArray.clone();
 
-        ne.NormaliseEdges(ha.pathData_RightEdge, ha.pathDataNoOfLines, 5);
-        normRightEdges = ne.finalArray.clone();
+            ne.NormaliseEdges(ha.pathData_RightEdge, ha.pathDataNoOfLines, 5);
+            normRightEdges = ne.finalArray.clone();
 
-        tm.HorizonLine(dst, ha.X_resolution, ha.obstacleData_NoOfObstacles, ha.obstacleData_LeftEdge, ha.obstacleData_RightEdge, ha.obstacleData_yPixel, ha.pathData_yPixel, normLeftEdges, normRightEdges, ha.pathDataNoOfLines);
+            tm.HorizonLine(dst, ha.X_resolution, ha.obstacleData_NoOfObstacles, ha.obstacleData_LeftEdge, ha.obstacleData_RightEdge, ha.obstacleData_yPixel, ha.pathData_yPixel, normLeftEdges, normRightEdges, ha.pathDataNoOfLines);
 
-        //write text on video
-        /*char TestStr[100];
-        sprintf(TestStr,"waited: %1f and loop is %1f", 0.5,0.7);
-        putText(dst,TestStr,Point(10,50),CV_FONT_NORMAL,0.45,Scalar(255,255,255),1,1);*/
+            //write text on video
+            /*char TestStr[100];
+            sprintf(TestStr,"waited: %1f and loop is %1f", 0.5,0.7);
+            putText(dst,TestStr,Point(10,50),CV_FONT_NORMAL,0.45,Scalar(255,255,255),1,1);*/
 
 
-        imshow("Camera Video", dst);
-        videoOutput.write(dst); // save input image to output.avi file
+            imshow("Camera Video", dst);
+            //videoOutput.write(dst); // save input image to output.avi file
+
         }
 
 
@@ -531,6 +606,7 @@ int main(int argc, char **argv)
         //imshow("Camera Video", dst);
         //videoOutput.write(dst); // save input image to output.avi file
         key = waitKey(25);
+
 
         //while(waitKey(1) !=27); //27 = ascii value for ESC
 
